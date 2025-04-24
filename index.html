@@ -1,41 +1,345 @@
-// OCR من الصورة + العد التنازلي let countdownTimeout; let countdownValue = 3;
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>التحليل الرقمي القرآني</title>
 
-function analyzeImageFromUpload() { const imageInput = document.getElementById("imageInput"); const inputText = document.getElementById("inputText"); const countdownMsg = document.getElementById("countdownMsg");
+  <!-- مكتبة Tailwind CSS للتصميم -->
+  <script src="https://cdn.tailwindcss.com"></script>
 
-if (!imageInput.files.length) { alert("الرجاء اختيار صورة."); return; }
+  <!-- مكتبة Tesseract.js للتعرف الضوئي على الحروف من الصور -->
+  <script src="https://cdn.jsdelivr.net/npm/tesseract.js@2.1.1/dist/tesseract.min.js"></script>
 
-const file = imageInput.files[0]; const reader = new FileReader(); reader.onload = function () { Tesseract.recognize(reader.result, 'ara', { logger: m => console.log(m) }) .then(({ data: { text } }) => { inputText.value = text.trim(); startCountdownToAnalyze(); }); }; reader.readAsDataURL(file); }
+  <!-- مكتبة HTML2PDF لحفظ النتائج كملف PDF -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
 
-function startCountdownToAnalyze() { const countdownMsg = document.getElementById("countdownMsg"); const inputText = document.getElementById("inputText");
+  <!-- تنسيقات مخصصة -->
+  <style>
+    body {
+      font-family: 'Cairo', sans-serif;
+    }
+    .dark-mode {
+      background-color: #121212;
+      color: #e0e0e0;
+    }
+    .dark-mode textarea,
+    .dark-mode input,
+    .dark-mode button {
+      background-color: #1e1e1e !important;
+      color: #ffffff !important;
+      border-color: #444 !important;
+    }
+    #countdownMsg {
+      font-weight: bold;
+      color: #166534;
+      transition: opacity 0.3s ease;
+    }
+  </style>
+</head>
+<body id="body" class="bg-[#fdfcf9] text-[#2e7d32] p-6">
 
-countdownValue = 3; countdownMsg.classList.remove("hidden"); countdownMsg.textContent = سيبدأ التحليل خلال ${countdownValue}...;
+  <!-- زر التبديل بين الوضع الليلي والعادي -->
+  <div class="fixed top-4 left-4 z-50">
+    <button onclick="toggleDarkMode()" class="bg-gray-800 text-white px-3 py-1 rounded-xl text-sm shadow-md hover:bg-gray-700">
+      🌓 وضع الليل
+    </button>
+  </div>
 
-clearTimeout(countdownTimeout);
+  <!-- واجهة الدخول برمز -->
+  <div id="introScreen" class="text-center py-16 max-w-xl mx-auto bg-white shadow-xl rounded-xl">
+    <div class="p-6">
+      <h2 class="text-3xl font-bold mb-2">بسم الله الوكيل</h2>
+      <h3 class="text-2xl font-semibold mb-1">تحليل رقمي</h3>
+      <p class="text-lg font-semibold mb-4 text-yellow-600">✨ إلى اللانهاية نرتقي سويًا ∞</p>
+      <p class="text-sm text-gray-700 leading-relaxed mb-4">
+        تحليل رقمي قرآني – لنكون من أصحاب الرقيم<br>
+        إهداء محبة وتقدير للأستاذ المبارك: عبدالرحمن عمرو 🌿<br>
+        تم تطوير هذه الأداة تعبيرًا عن الامتنان لما قدمه لنا من علم حق وفكر صمدي
+      </p>
 
-const listener = () => { clearTimeout(countdownTimeout); countdownMsg.classList.add("hidden"); inputText.removeEventListener("input", listener); };
+      <!-- حقل رمز الدخول -->
+      <input type="password" id="passcodeInput" placeholder="رمز المرور"
+        class="p-3 text-center border rounded-xl w-64 text-lg focus:outline-none focus:ring-2 focus:ring-green-500 mb-4" />
+      <br>
 
-inputText.addEventListener("input", listener);
+      <!-- زر بدء التحليل -->
+      <button onclick="startApp()"
+        class="bg-yellow-600 hover:bg-yellow-700 text-white font-semibold py-2 px-6 rounded-xl text-lg">
+        ابدأ التحليل
+      </button>
 
-function tick() { countdownValue--; if (countdownValue > 0) { countdownMsg.textContent = سيبدأ التحليل خلال ${countdownValue}...; countdownTimeout = setTimeout(tick, 1000); } else { countdownMsg.classList.add("hidden"); inputText.removeEventListener("input", listener); analyze(); } }
+      <!-- رسالة الخطأ في حال إدخال رمز خاطئ -->
+      <div id="errorMessage" class="text-red-600 mt-3 text-sm"></div>
+    </div>
+  </div>
+  <!-- واجهة التحليل الرئيسية (تظهر بعد إدخال الرمز) -->
+  <div id="mainApp" style="display: none;" class="max-w-3xl mx-auto">
+    <h2 class="text-2xl font-bold text-center mb-4">التحليل الرقمي القرآني</h2>
 
-countdownTimeout = setTimeout(tick, 1000); }
+    <!-- حقل إدخال النص -->
+    <textarea id="inputText" placeholder="أدخل نصًا قرآنيًا أو نصًا عاديًا..."
+      class="w-full h-40 p-4 border-2 border-green-200 rounded-xl text-lg mb-4 focus:outline-none focus:ring-2 focus:ring-green-400 resize-none"></textarea>
+
+    <!-- رفع صورة لاستخراج النص -->
+    <div class="mt-4 flex flex-col items-center gap-2">
+      <label class="text-sm font-semibold text-green-800">أو اختر صورة لاستخراج النص منها:</label>
+      <input type="file" id="imageInput" accept="image/*" class="p-1 border rounded-lg" />
+      <div id="countdownMsg" class="text-center text-sm hidden">سيبدأ التحليل خلال 3...</div>
+    </div>
+    <!-- أزرار الأدوات -->
+    <div class="flex flex-wrap justify-center gap-2 my-4">
+      <button onclick="toggleDetails()" class="bg-green-700 text-white py-2 px-4 rounded-xl text-sm">
+        عرض/إخفاء التفاصيل
+      </button>
+
+      <button onclick="copyResult()" class="bg-green-700 text-white py-2 px-4 rounded-xl text-sm">
+        📋 نسخ النتيجة
+      </button>
+
+      <button onclick="downloadPDF()" class="bg-yellow-600 text-white py-2 px-4 rounded-xl text-sm">
+        📄 حفظ PDF
+      </button>
+
+      <button onclick="analyzeWords()" class="bg-blue-700 text-white py-2 px-4 rounded-xl text-sm">
+        🔍 تحليل الكلمات
+      </button>
+    </div>
+
+    <!-- نتائج التحليل -->
+    <div id="result" class="bg-green-50 border border-green-200 rounded-xl p-4 text-lg mb-4 hidden"></div>
+    <div id="details" class="text-sm text-gray-700 mb-4 hidden"></div>
+    <div id="wordDetails" class="text-sm text-gray-800"></div>
+    <!-- فتح سورة أو آية في موقع quran.com -->
+    <div class="mt-6 text-center">
+      <h4 class="text-lg font-semibold mb-2">📖 عرض سورة أو آية في المصحف</h4>
+
+      <!-- إدخال اسم أو رقم السورة -->
+      <input type="text" id="suraName" placeholder="اسم أو رقم السورة"
+        class="w-64 p-2 border rounded-lg text-center mb-2" />
+
+      <!-- إدخال رقم الآية (اختياري) -->
+      <input type="number" id="ayaNumber" placeholder="رقم الآية (اختياري)" min="1"
+        class="w-64 p-2 border rounded-lg text-center mb-2 ml-2" />
+
+      <br>
+
+      <!-- زر فتح الآية -->
+      <button onclick="openAyah()" class="bg-indigo-700 text-white py-2 px-4 rounded-xl mt-2 text-sm">
+        📖 فتح في موقع quran.com
+      </button>
+    </div>
+  </div> <!-- نهاية واجهة mainApp -->
+  <script>
+const values = {
+  "أ":1,"إ":1,"آ":1,"ء":1,"ا":1,"ى":1,"ٱ":1,"ب":9,"ت":11,"ث":25,"ج":19,"ح":18,"خ":20,
+  "د":16,"ذ":17,"ر":8,"ز":24,"س":15,"ش":21,"ص":22,"ض":23,"ط":26,"ظ":28,"ع":12,"غ":27,
+  "ف":13,"ق":14,"ك":10,"ل":2,"م":4,"ن":3,"ه":7,"هـ":7,"ة":7,"و":5,"ؤ":5,"ي":6,"ئ":6,
+  "0":0,"1":1,"2":2,"3":3,"4":4,"5":5,"6":6,"7":7,"8":8,"9":9
+};
+
+const ignoredChars = ['َ','ً','ُ','ٌ','ِ','ٍ','ْ','ّ','﴾','﴿','.',',','؛','؟','!','-','_','"',"'",'\n','\r','/'];
+
+function simplify(num) {
+  const steps = [];
+  while (num > 9) {
+    steps.push(num);
+    num = num.toString().split('').reduce((acc, d) => acc + parseInt(d), 0);
+  }
+  steps.push(num);
+  return steps;
+}
+
+function analyze() {
+  const text = document.getElementById("inputText").value;
+  let total = 0;
+  let details = [];
+
+  for (let char of text) {
+    if (char === ' ' || ignoredChars.includes(char)) {
+      if (char === ' ') details.push('&nbsp;&nbsp;');
+      continue;
+    }
+    const value = values[char];
+    if (value !== undefined) {
+      total += value;
+      details.push(`${char} = ${value}`);
+    } else {
+      details.push(`${char} = غير معروف`);
+    }
+  }
+
+  const steps = simplify(total);
+  const simplified = steps[steps.length - 1];
+
+  let html = "<strong>القيمة الكلية:</strong> " + total + "<br>";
+  if (steps.length > 1) {
+    html += "<strong>مراحل التبسيط:</strong><br>" + steps.slice(0, -1).map((s, i) => "المرحلة " + (i + 1) + ": " + s).join("<br>") + "<br>";
+  }
+  html += "<strong>التبسيط النهائي:</strong> " + simplified;
+
+  document.getElementById("result").innerHTML = html;
+  document.getElementById("details").innerHTML = "<strong>تفاصيل:</strong><br>" + details.join("<br>");
+  document.getElementById("result").classList.remove("hidden");
+}
+
+document.getElementById("inputText").addEventListener("input", analyze);
+</script>
+<script>
+function toggleDetails() {
+  const detailsDiv = document.getElementById("details");
+  detailsDiv.style.display = detailsDiv.style.display === "none" ? "block" : "none";
+}
+
+function copyResult() {
+  const resultText = document.getElementById("result").innerText + "\n" + document.getElementById("details").innerText;
+  navigator.clipboard.writeText(resultText).then(() => alert("تم نسخ النتيجة!"));
+}
+
+function analyzeWords() {
+  const text = document.getElementById("inputText").value.trim();
+  const words = text.split(/\s+/);
+  let output = "<strong>تحليل الكلمات:</strong><br>";
+
+  for (let word of words) {
+    let total = 0;
+    for (let char of word) {
+      if (ignoredChars.includes(char)) continue;
+      const value = values[char];
+      if (value) total += value;
+    }
+    output += `${word} = ${total}<br>`;
+  }
+
+  document.getElementById("wordDetails").innerHTML = output;
+}
+
+function downloadPDF() {
+  const content = document.getElementById("mainApp");
+  const opt = {
+    margin: 0.5,
+    filename: 'تحليل_رقمي.pdf',
+    image: { type: 'jpeg', quality: 0.98 },
+    html2canvas: { scale: 2 },
+    jsPDF: { unit: 'in', format: 'a4', orientation: 'portrait' }
+  };
+  html2pdf().set(opt).from(content).save();
+}
+</script>
+<script>
+let countdownTimeout;
+let countdownValue = 3;
+
+function analyzeImageFromUpload() {
+  const imageInput = document.getElementById("imageInput");
+  const inputText = document.getElementById("inputText");
+  const countdownMsg = document.getElementById("countdownMsg");
+
+  if (!imageInput.files.length) {
+    alert("الرجاء اختيار صورة.");
+    return;
+  }
+
+  const file = imageInput.files[0];
+  const reader = new FileReader();
+
+  reader.onload = function () {
+    Tesseract.recognize(reader.result, 'ara', { logger: m => console.log(m) })
+      .then(({ data: { text } }) => {
+        inputText.value = text.trim();
+        startCountdownToAnalyze();
+      });
+  };
+
+  reader.readAsDataURL(file);
+}
+
+function startCountdownToAnalyze() {
+  const countdownMsg = document.getElementById("countdownMsg");
+  const inputText = document.getElementById("inputText");
+
+  countdownValue = 3;
+  countdownMsg.classList.remove("hidden");
+  countdownMsg.textContent = `سيبدأ التحليل خلال ${countdownValue}...`;
+
+  clearTimeout(countdownTimeout);
+
+  const listener = () => {
+    clearTimeout(countdownTimeout);
+    countdownMsg.classList.add("hidden");
+    inputText.removeEventListener("input", listener);
+  };
+
+  inputText.addEventListener("input", listener);
+
+  function tick() {
+    countdownValue--;
+    if (countdownValue > 0) {
+      countdownMsg.textContent = `سيبدأ التحليل خلال ${countdownValue}...`;
+      countdownTimeout = setTimeout(tick, 1000);
+    } else {
+      countdownMsg.classList.add("hidden");
+      inputText.removeEventListener("input", listener);
+      analyze();
+    }
+  }
+
+  countdownTimeout = setTimeout(tick, 1000);
+}
 
 document.getElementById("imageInput").addEventListener("change", analyzeImageFromUpload);
+</script>
+<script>
+function startApp() {
+  const pass = document.getElementById("passcodeInput").value;
+  if (pass === "2222") {
+    document.getElementById("introScreen").style.display = "none";
+    document.getElementById("mainApp").style.display = "block";
+  } else {
+    document.getElementById("errorMessage").textContent = "رمز المرور غير صحيح";
+  }
+}
 
-function startApp() { const pass = document.getElementById("passcodeInput").value; if (pass === "2222") { document.getElementById("introScreen").style.display = "none"; document.getElementById("mainApp").style.display = "block"; } else { document.getElementById("errorMessage").textContent = "رمز المرور غير صحيح"; } }
+document.getElementById("passcodeInput").addEventListener("keydown", function (event) {
+  if (event.key === "Enter") {
+    event.preventDefault();
+    startApp();
+  }
+});
 
-document.getElementById("passcodeInput").addEventListener("keydown", function (event) { if (event.key === "Enter") { event.preventDefault(); startApp(); } });
+function toggleDarkMode() {
+  const body = document.getElementById("body");
+  body.classList.toggle("dark-mode");
+  localStorage.setItem("dark-mode", body.classList.contains("dark-mode") ? "on" : "off");
+}
 
-function toggleDarkMode() { const body = document.getElementById("body"); body.classList.toggle("dark-mode"); localStorage.setItem("dark-mode", body.classList.contains("dark-mode") ? "on" : "off"); }
+window.onload = function () {
+  if (localStorage.getItem("dark-mode") === "on") {
+    document.getElementById("body").classList.add("dark-mode");
+  }
+};
 
-window.onload = function () { if (localStorage.getItem("dark-mode") === "on") { document.getElementById("body").classList.add("dark-mode"); } };
+function openAyah() {
+  const suraInput = document.getElementById("suraName").value.trim();
+  const aya = document.getElementById("ayaNumber").value.trim();
+  const sura = parseInt(suraInput) || 0;
 
-function openAyah() { const suraInput = document.getElementById("suraName").value.trim(); const aya = document.getElementById("ayaNumber").value.trim(); const sura = parseInt(suraInput) || 0; if (!sura || sura < 1 || sura > 114) { alert("يرجى إدخال اسم أو رقم سورة صحيح"); return; } const url = aya ? https://quran.com/${sura}/${aya} : https://quran.com/${sura}; window.open(url, "_blank"); } </script>
+  if (!sura || sura < 1 || sura > 114) {
+    alert("يرجى إدخال اسم أو رقم سورة صحيح");
+    return;
+  }
 
+  const url = aya ? `https://quran.com/${sura}/${aya}` : `https://quran.com/${sura}`;
+  window.open(url, "_blank");
+}
+</script>
+<!-- الخاتمة -->
 <div class="text-center text-sm text-gray-600 mt-16 mb-4 leading-relaxed">
   <p class="text-green-700 font-semibold">﴿ وَقُل رَّبِّ زِدْنِي عِلْمًا ﴾</p>
   <p>تم بحمد الله وتوفيقه</p>
   <p>بإشراف: <strong>عبدالرحمن عمرو</strong></p>
   <p>تطوير: <strong>حسن علي</strong></p>
-</div></body>
+</div>
+
+</body>
 </html>
